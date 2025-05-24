@@ -41,7 +41,7 @@ jobs:
       - name: 📤 Deploy files via SSH
         uses: appleboy/scp-action@v0.1.3
         with:
-          host: ssh.i6r63sp.webhosting.aruba.it
+          host: ${{ secrets.ARUBA_HOST}}
           username:  loihuse-deploy
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 2222
@@ -51,7 +51,7 @@ jobs:
       - name: 🧪 Run post-deploy commands over SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ssh.i6r63sp.webhosting.aruba.it
+          host: ${{ secrets.ARUBA_HOST}}
           username: loihuse-deploy
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 2222
