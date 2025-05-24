@@ -47,7 +47,6 @@ jobs:
           username: loihuse-deploy
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 2222
-          source: "./!(node_modules|tests) .env"
           target: /web/htdocs/www.neoaveum.com/home/laravel-app
 
       - name: 🥲 Run post-deploy commands over SSH
