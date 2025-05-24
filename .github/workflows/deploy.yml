@@ -30,28 +30,30 @@ jobs:
 
       - name: 📝 Prepare .env for production
         run: |
-          cp .env.example .env
+          cp .env.base .env
           echo "APP_KEY=${{ secrets.APP_KEY }}" >> .env
+          echo "APP_URL=${{ secrets.APP_URL }}" >> .env
+          echo "APP_ENV=production" >> .env
+          echo "DB_CONNECTION=${{ secrets.DB_CONNECTION }}" >> .env
           echo "DB_DATABASE=${{ secrets.DB_DATABASE }}" >> .env
           echo "DB_USERNAME=${{ secrets.DB_USERNAME }}" >> .env
           echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" >> .env
           echo "SESSION_DRIVER=file" >> .env
-          echo "DB_CONNECTION=mysql" .env
 
-      - name: 📤 Deploy files via SSH
+      - name: 📄 Deploy files via SSH
         uses: appleboy/scp-action@v0.1.3
         with:
-          host: ${{ secrets.ARUBA_HOST}}
-          username:  loihuse-deploy
+          host: ${{ secrets.ARUBA_HOST }}
+          username: loihuse-deploy
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 2222
-          source: "."
+          source: "./!(node_modules|tests) .env"
           target: /web/htdocs/www.neoaveum.com/home/laravel-app
 
-      - name: 🧪 Run post-deploy commands over SSH
+      - name: 🥲 Run post-deploy commands over SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.ARUBA_HOST}}
+          host: ${{ secrets.ARUBA_HOST }}
           username: loihuse-deploy
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 2222
