@@ -1,0 +1,67 @@
+name: Deploy to Aruba
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📦 Checkout repository
+        uses: actions/checkout@v3
+
+      - name: 🛠 Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: 8.2
+          extensions: mbstring, intl, pdo, pdo_mysql, openssl, curl, zip
+          tools: composer
+
+      - name: ⚙️ Install Composer dependencies
+        run: composer install --no-dev --optimize-autoloader
+
+      - name: ⚙️ Build frontend (Vite)
+        run: |
+          npm ci
+          npm run build
+
+      - name: 📝 Prepare .env for production
+        run: |
+          cp .env.base .env
+          echo "APP_KEY=${{ secrets.APP_KEY }}" >> .env
+          echo "DB_DATABASE=${{ secrets.DB_DATABASE }}" >> .env
+          echo "DB_USERNAME=${{ secrets.DB_USERNAME }}" >> .env
+          echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" >> .env
+          echo "SESSION_DRIVER=file" >> .env
+          echo "DB_CONNECTION=mysql" .env
+
+      - name: 📤 Deploy files via SSH
+        uses: appleboy/scp-action@v0.1.3
+        with:
+          host: ssh.i6r63sp.webhosting.aruba.it
+          username:  loihuse-deploy
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 2222
+          source: "."
+          target: /web/htdocs/www.neoaveum.com/home/laravel-app
+
+      - name: 🧪 Run post-deploy commands over SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ssh.i6r63sp.webhosting.aruba.it
+          username: loihuse-deploy
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 2222
+          script: |
+            cd /web/htdocs/www.neoaveum.com/home/laravel-app
+            php artisan config:cache
+            php artisan route:cache
+            php artisan migrate --force
+            php artisan storage:link
+            chmod -R 775 bootstrap/cache storage
+
+            # 🔗 Ricrea il symlink se assente
+            ln -snf /web/htdocs/www.neoaveum.com/home/laravel-app/public /web/htdocs/www.neoaveum.com/home/public_html
