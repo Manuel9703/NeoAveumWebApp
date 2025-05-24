@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 📦 Checkout repository
+      - name: 🎞 Checkout repository
         uses: actions/checkout@v3
 
       - name: 🛠 Setup PHP
@@ -28,17 +28,9 @@ jobs:
           npm ci
           npm run build
 
-      - name: 📝 Prepare .env for production
-        run: |
-          cp .env.example .env
-          echo "APP_KEY=${{ secrets.APP_KEY }}" >> .env
-          echo "DB_DATABASE=${{ secrets.DB_DATABASE }}" >> .env
-          echo "DB_USERNAME=${{ secrets.DB_USERNAME }}" >> .env
-          echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" >> .env
-          echo "SESSION_DRIVER=file" >> .env
-          echo "DB_CONNECTION=mysql" .env
+      # Rimosso il passaggio che preparava il file .env
 
-      - name: 📤 Deploy files via SSH
+      - name: 📄 Deploy files via SSH
         uses: appleboy/scp-action@v0.1.3
         with:
           host: ${{ secrets.ARUBA_HOST}}
