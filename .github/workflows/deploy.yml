@@ -64,11 +64,9 @@ jobs:
           script: |
             cd ${{ secrets.REMOTE_PATH }}
             mkdir -p tmp-deploy
-            mv deploy.tar.gz tmp-deploy/
-            cd tmp-deploy
-            tar -xzf deploy.tar.gz
+            tar -xzf deploy.tar.gz -C tmp-deploy
             rm deploy.tar.gz
-            cd ..
+            cd tmp-deploy
             composer install --no-dev --optimize-autoloader
             php artisan config:cache
             php artisan route:cache
