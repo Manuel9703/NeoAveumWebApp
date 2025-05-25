@@ -35,9 +35,14 @@ jobs:
         run: |
           composer install --no-dev --optimize-autoloader
 
-      - name: Archive project for deployment (full Laravel in root)
+      - name: Copy to temp folder before archive
         run: |
-          tar --exclude=.git --exclude=tests --exclude=node_modules -czf deploy.tar.gz .
+          mkdir temp-deploy
+          rsync -a --exclude=".git" --exclude="tests" --exclude="node_modules" ./ temp-deploy/
+
+      - name: Archive from temp-deploy
+        run: |
+          tar -czf deploy.tar.gz -C temp-deploy .
 
       - name: Upload project to Aruba (root folder)
         uses: appleboy/scp-action@v0.1.4
