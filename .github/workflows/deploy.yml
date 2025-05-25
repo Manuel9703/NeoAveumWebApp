@@ -62,11 +62,14 @@ jobs:
           port: ${{ secrets.ARUBA_PORT }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd ${{ secrets.REMOTE_PATH }}
-            mkdir -p tmp-deploy
-            tar -xzf deploy.tar.gz -C tmp-deploy
+            cd ~
+            mkdir -p deploy-temp
+            mv ${{ secrets.REMOTE_PATH }}/deploy.tar.gz deploy-temp/
+            cd deploy-temp
+            tar -xzf deploy.tar.gz
             rm deploy.tar.gz
-            cd tmp-deploy
+            rsync -a --delete ./ ${{ secrets.REMOTE_PATH }}/
+            cd ${{ secrets.REMOTE_PATH }}
             composer install --no-dev --optimize-autoloader
             php artisan config:cache
             php artisan route:cache
