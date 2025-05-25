@@ -1,4 +1,4 @@
-name: Deploy to Aruba
+name: Deploy Laravel to Aruba
 
 on:
   push:
@@ -10,50 +10,57 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 🎞 Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: 🛠 Setup PHP
+      - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: 8.2
-          extensions: mbstring, intl, pdo, pdo_mysql, openssl, curl, zip
-          tools: composer
+          php-version: '8.2'
+          extensions: mbstring, pdo, curl, xml, bcmath, intl, zip
 
-      - name: ⚙️ Install Composer dependencies
-        run: composer install --no-dev --optimize-autoloader
-
-      - name: ⚙️ Build frontend (Vite)
-        run: |
-          npm ci
-          npm run build
-
-      # Rimosso il passaggio che preparava il file .env
-
-      - name: 📄 Deploy files via SSH
-        uses: appleboy/scp-action@v0.1.3
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
         with:
-          host: ${{ secrets.ARUBA_HOST}}
-          username:  loihuse-deploy
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: 2222
-          source: "."
-          target: /web/htdocs/www.neoaveum.com/home/laravel-app
+          node-version: '20'
+          cache: 'npm'
 
-      - name: 🧪 Run post-deploy commands over SSH
+      - name: Install NPM dependencies
+        run: npm ci
+
+      - name: Build frontend assets
+        run: npm run build
+
+      - name: Install Composer dependencies
+        run: |
+          composer install --no-dev --optimize-autoloader
+
+      - name: Archive project for deployment
+        run: |
+          zip -r deploy.zip . -x "vendor/*" ".git/*" "node_modules/*" "tests/*"
+
+      - name: Upload project to Aruba
+        uses: appleboy/scp-action@v0.1.4
+        with:
+          host: ${{ secrets.ARUBA_HOST }}
+          username: ${{ secrets.ARUBA_USER }}
+          port: ${{ secrets.ARUBA_PORT }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "deploy.zip"
+          target: ${{ secrets.REMOTE_PATH }}
+
+      - name: SSH into Aruba and finalize setup
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.ARUBA_HOST}}
-          username: loihuse-deploy
+          host: ${{ secrets.ARUBA_HOST }}
+          username: ${{ secrets.ARUBA_USER }}
+          port: ${{ secrets.ARUBA_PORT }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: 2222
           script: |
-            cd /web/htdocs/www.neoaveum.com/home/laravel-app
+            cd ${{ secrets.REMOTE_PATH }}
+            unzip -o deploy.zip
+            rm deploy.zip
+            composer install --no-dev --optimize-autoloader
             php artisan config:cache
             php artisan route:cache
-            php artisan migrate --force
-            php artisan storage:link
-            chmod -R 775 bootstrap/cache storage
-
-            # 🔗 Ricrea il symlink se assente
-            ln -snf /web/htdocs/www.neoaveum.com/home/laravel-app/public /web/htdocs/www.neoaveum.com/home/public_html
+            php artisan view:cache
