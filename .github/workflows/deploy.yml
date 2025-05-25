@@ -45,9 +45,9 @@ jobs:
           local-dir: ./
           server-dir: ${{ secrets.FTP_REMOTE_PATH }}
           exclude: |
-            .git*
-            node_modules/**
-            tests/**
+            **/.git*/**
+            **/node_modules/**
+            **/tests*/**
             storage/logs/**
             storage/debugbar/**
             .env.example
