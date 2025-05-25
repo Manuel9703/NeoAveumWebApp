@@ -1,4 +1,4 @@
-name: Deploy Laravel to Aruba (root-based)
+name: Deploy Laravel to Aruba via FTP
 
 on:
   push:
@@ -35,44 +35,22 @@ jobs:
         run: |
           composer install --no-dev --optimize-autoloader
 
-      - name: Copy to temp folder before archive
-        run: |
-          mkdir temp-deploy
-          rsync -a --exclude=".git" --exclude="tests" --exclude="node_modules" ./ temp-deploy/
-
-      - name: Archive from temp-deploy
-        run: |
-          tar -czf deploy.tar.gz -C temp-deploy .
-
-      - name: Upload project to Aruba (root folder)
-        uses: appleboy/scp-action@v0.1.4
+      - name: Deploy via FTP to Aruba
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
-          host: ${{ secrets.ARUBA_HOST }}
-          username: ${{ secrets.ARUBA_USER }}
-          port: ${{ secrets.ARUBA_PORT }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "deploy.tar.gz"
-          target: ${{ secrets.REMOTE_PATH }}
-
-      - name: SSH into Aruba and deploy to root
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.ARUBA_HOST }}
-          username: ${{ secrets.ARUBA_USER }}
-          port: ${{ secrets.ARUBA_PORT }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script: |
-            cd ~
-            mkdir -p deploy-temp
-            mv ${{ secrets.REMOTE_PATH }}/deploy.tar.gz deploy-temp/
-            cd deploy-temp
-            tar -xzf deploy.tar.gz
-            rm deploy.tar.gz
-            rsync -a --delete ./ ${{ secrets.REMOTE_PATH }}/
-            cd ${{ secrets.REMOTE_PATH }}
-            composer install --no-dev --optimize-autoloader
-            php artisan config:cache
-            php artisan route:cache
-            php artisan view:cache
-            php artisan storage:link
-            chmod -R 775 storage bootstrap/cache
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ftps
+          local-dir: ./
+          server-dir: ${{ secrets.FTP_REMOTE_PATH }}
+          exclude: |
+            **/.git*
+            **/node_modules/**
+            **/tests/**
+            **/storage/logs/**
+            **/storage/debugbar/**
+            .env.example
+            README.md
+            deploy.tar.gz
+            temp-deploy/**
