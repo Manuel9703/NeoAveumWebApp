@@ -1,4 +1,4 @@
-name: Deploy Laravel to Aruba
+name: Deploy Laravel to Aruba (root-based)
 
 on:
   push:
@@ -37,7 +37,7 @@ jobs:
 
       - name: Archive project for deployment (full Laravel in root)
         run: |
-          zip -r deploy.zip . -x ".git/*" "tests/*" "node_modules/*"
+          tar -czf deploy.tar.gz . --exclude='.git' --exclude='tests' --exclude='node_modules'
 
       - name: Upload project to Aruba (root folder)
         uses: appleboy/scp-action@v0.1.4
@@ -46,7 +46,7 @@ jobs:
           username: ${{ secrets.ARUBA_USER }}
           port: ${{ secrets.ARUBA_PORT }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "deploy.zip"
+          source: "deploy.tar.gz"
           target: ${{ secrets.REMOTE_PATH }}
 
       - name: SSH into Aruba and deploy to root
@@ -58,8 +58,12 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd ${{ secrets.REMOTE_PATH }}
-            unzip -o deploy.zip
-            rm deploy.zip
+            mkdir -p tmp-deploy
+            mv deploy.tar.gz tmp-deploy/
+            cd tmp-deploy
+            tar -xzf deploy.tar.gz
+            rm deploy.tar.gz
+            cd ..
             composer install --no-dev --optimize-autoloader
             php artisan config:cache
             php artisan route:cache
