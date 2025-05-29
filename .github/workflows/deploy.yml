@@ -47,10 +47,7 @@ jobs:
           exclude: |
             **/.git*/**
             **/node_modules/**
+            **/vendor/**
             **/tests*/**
-            storage/logs/**
-            storage/debugbar/**
             .env.example
             README.md
-            deploy.tar.gz
-            temp-deploy/**
