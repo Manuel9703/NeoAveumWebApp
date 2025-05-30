@@ -42,6 +42,11 @@ jobs:
           sed -i "s|__DIR__.'/../vendor|__DIR__.'/vendor|" index.php
           sed -i "s|__DIR__.'/../bootstrap|__DIR__.'/bootstrap|" index.php
 
+      - name: Set permissions for Laravel folders
+        run: |
+          chmod -R 775 storage
+          chmod -R 775 bootstrap/cache
+
       - name: Deploy via FTP to Aruba
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
