@@ -35,22 +35,6 @@ jobs:
         run: |
           composer install --no-dev --optimize-autoloader
 
-      - name: Set permissions for Laravel folders
-        run: |
-          chmod -R 775 storage
-          chmod -R 775 bootstrap/cache
-
-      - name: Remove root index.php and .htaccess if exist on server
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          port: 22
-          script: |
-            rm -f ${{ secrets.FTP_REMOTE_PATH }}/index.php
-            rm -f ${{ secrets.FTP_REMOTE_PATH }}/.htaccess
-
       - name: Deploy via FTP to Aruba
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
