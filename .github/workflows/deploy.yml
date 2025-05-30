@@ -51,6 +51,16 @@ jobs:
             **/tests*/**
             .env.example
             README.md
+            -
+      - name: Clean remote public/build before replace
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          port: 22
+          script: |
+             rm -rf ${{ secrets.FTP_REMOTE_PATH }}/public/build/*
 
       - name: Force replace ONLY public/build folder
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
