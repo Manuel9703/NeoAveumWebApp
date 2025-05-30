@@ -35,6 +35,27 @@ jobs:
         run: |
           composer install --no-dev --optimize-autoloader
 
+      - name: Set permissions for Laravel folders
+        run: |
+          chmod -R 775 storage
+          chmod -R 775 bootstrap/cache
+
+      - name: Create empty-dir for cleaning
+        run: |
+          mkdir -p empty-dir
+          touch empty-dir/.gitkeep
+
+      - name: Clean remote public/build folder via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ftps
+          local-dir: ./empty-dir/
+          server-dir: /${{ secrets.FTP_REMOTE_PATH }}/public/build/
+          dangerous-clean-slate: true
+
       - name: Deploy via FTP to Aruba
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
@@ -51,16 +72,6 @@ jobs:
             **/tests*/**
             .env.example
             README.md
-            -
-      - name: Clean remote public/build before replace
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          port: 22
-          script: |
-             rm -rf ${{ secrets.FTP_REMOTE_PATH }}/public/build/*
 
       - name: Force replace ONLY public/build folder
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
