@@ -35,6 +35,13 @@ jobs:
         run: |
           composer install --no-dev --optimize-autoloader
 
+      - name: Move index.php and .htaccess to root
+        run: |
+          cp public/index.php ./index.php
+          cp public/.htaccess ./.htaccess
+          sed -i "s|__DIR__.'/../vendor|__DIR__.'/vendor|" index.php
+          sed -i "s|__DIR__.'/../bootstrap|__DIR__.'/bootstrap|" index.php
+
       - name: Deploy via FTP to Aruba
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
@@ -47,10 +54,11 @@ jobs:
           exclude: |
             **/.git*/**
             **/node_modules/**
-            vendor
+            **/vendor/**
             **/tests*/**
             .env.example
             README.md
+            public/**
 
       - name: Force replace ONLY public/build folder
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
