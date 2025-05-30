@@ -47,11 +47,10 @@ jobs:
           exclude: |
             **/.git*/**
             **/node_modules/**
-            **/vendor/**
+            vendor
             **/tests*/**
             .env.example
             README.md
-
 
       - name: Force replace ONLY public/build folder
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
