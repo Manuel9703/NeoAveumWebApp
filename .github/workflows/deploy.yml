@@ -59,6 +59,16 @@ jobs:
           server-dir: /${{ secrets.FTP_REMOTE_PATH }}/public/build/
           dangerous-clean-slate: true
 
+      - name: Ensure public/build exists
+        run: |
+          if [ ! -d "./public/build" ]; then
+            echo "❌ Folder public/build does not exist. Build might have failed.";
+            exit 1;
+          fi
+
+      - name: Debug build output
+        run: ls -la ./public/build/assets
+
       - name: Deploy via FTP to Aruba
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
@@ -75,13 +85,3 @@ jobs:
             **/tests*/**
             .env.example
             README.md
-
-      - name: Force replace ONLY public/build folder
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
-        with:
-          server: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          local-dir: ./public/build/
-          server-dir: /${{ secrets.FTP_REMOTE_PATH }}/public/build/
-          dangerous-clean-slate: true
