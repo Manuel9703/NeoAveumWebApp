@@ -76,7 +76,7 @@ jobs:
         with:
           host: ${{ secrets.ARUBA_HOST }}
           username: ${{ secrets.ARUBA_USER }}
-          port: ${{ secrets.ARUBA_PORT }}
+          port: 2222
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd ${{ secrets.REMOTE_PATH }}
