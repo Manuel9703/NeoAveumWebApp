@@ -1,4 +1,4 @@
-name: Deploy Laravel to Aruba via FTP
+name: Deploy Laravel to Aruba (Mixed SSH + FTP)
 
 on:
   push:
@@ -22,7 +22,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: '22'
+          node-version: '20'
           cache: 'npm'
 
       - name: Install npm 10.9.0
@@ -43,12 +43,7 @@ jobs:
           chmod -R 775 storage
           chmod -R 775 bootstrap/cache
 
-      - name: Create empty-dir for cleaning
-        run: |
-          mkdir -p empty-dir
-          touch empty-dir/.gitkeep
-
-      - name: Deploy via FTP to Aruba
+      - name: Upload App Core via FTP (excluding build)
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
           server: ${{ secrets.FTP_SERVER }}
@@ -62,15 +57,30 @@ jobs:
             **/node_modules/**
             **/vendor/**
             **/tests*/**
+            **/public/build/**
             .env.example
             README.md
 
-      - name: Force replace ONLY public/build folder
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
+      - name: Upload build files via SSH (SCP)
+        uses: appleboy/scp-action@v0.1.4
         with:
-          server: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          local-dir: ./public/build/
-          server-dir: /${{ secrets.FTP_REMOTE_PATH }}/public/build/
-          dangerous-clean-slate: true
+          host: ${{ secrets.ARUBA_HOST }}
+          username: ${{ secrets.ARUBA_USER }}
+          port: ${{ secrets.ARUBA_PORT }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "public/build"
+          target: "${{ secrets.REMOTE_PATH }}/public/build"
+
+      - name: Finalize via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.ARUBA_HOST }}
+          username: ${{ secrets.ARUBA_USER }}
+          port: ${{ secrets.ARUBA_PORT }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd ${{ secrets.REMOTE_PATH }}
+            composer install --no-dev --optimize-autoloader
+            php artisan config:cache
+            php artisan route:cache
+            php artisan view:cache
