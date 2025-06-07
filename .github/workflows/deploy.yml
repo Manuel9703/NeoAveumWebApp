@@ -1,48 +1,70 @@
 name: Deploy Laravel to Aruba (Mixed SSH + FTP)
-
 on:
   push:
     branches:
       - main
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-
+      
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.2'
           extensions: mbstring, pdo, curl, xml, bcmath, intl, zip
-
+      
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '20'
           cache: 'npm'
-
+      
       - name: Install npm 10.9.0
         run: npm install -g npm@10.9.0
-
+      
       - name: Install NPM dependencies
         run: npm ci
-
+      
       - name: Build frontend assets
         run: npm run build
-
+      
       - name: Install Composer dependencies
         run: |
           composer install --no-dev --optimize-autoloader
-
+      
       - name: Set permissions for Laravel folders
         run: |
           chmod -R 775 storage
           chmod -R 775 bootstrap/cache
-
+      
+      # DEBUG: Verifica che i secrets siano configurati
+      - name: Debug - Check secrets (without exposing values)
+        run: |
+          echo "ARUBA_HOST is set: ${{ secrets.ARUBA_HOST != '' }}"
+          echo "ARUBA_USER is set: ${{ secrets.ARUBA_USER != '' }}"
+          echo "ARUBA_PORT is set: ${{ secrets.ARUBA_PORT != '' }}"
+          echo "SSH_PRIVATE_KEY is set: ${{ secrets.SSH_PRIVATE_KEY != '' }}"
+          echo "SSH_PRIVATE_KEY length: ${{ length(secrets.SSH_PRIVATE_KEY) }}"
+          echo "REMOTE_PATH is set: ${{ secrets.REMOTE_PATH != '' }}"
+      
+      # DEBUG: Test SSH connection
+      - name: Debug - Test SSH connection
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.ARUBA_HOST }}
+          username: ${{ secrets.ARUBA_USER }}
+          port: ${{ secrets.ARUBA_PORT }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          debug: true
+          script: |
+            echo "SSH connection successful!"
+            whoami
+            pwd
+            ls -la
+      
       - name: Upload App Core via FTP (excluding build)
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
@@ -60,8 +82,7 @@ jobs:
             **/public/build/**
             .env.example
             README.md
-            
-            
+           
       - name: Upload build files via SSH (SCP)
         uses: appleboy/scp-action@v0.1.4
         with:
@@ -69,16 +90,20 @@ jobs:
           username: ${{ secrets.ARUBA_USER }}
           port: ${{ secrets.ARUBA_PORT }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
+          debug: true
+          timeout: 60s
+          command_timeout: 60s
           source: "public/build"
           target: "${{ secrets.REMOTE_PATH }}/public/build"
-
+      
       - name: Finalize via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.ARUBA_HOST }}
           username: ${{ secrets.ARUBA_USER }}
-          port: 2222
+          port: ${{ secrets.ARUBA_PORT }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
+          debug: true
           script: |
             cd ${{ secrets.REMOTE_PATH }}
             composer install --no-dev --optimize-autoloader
