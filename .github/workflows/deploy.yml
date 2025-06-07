@@ -60,6 +60,7 @@ jobs:
             **/public/build/**
             .env.example
             README.md
+            
 
       - name: Upload build files via SSH (SCP)
         uses: appleboy/scp-action@v0.1.4
