@@ -1,48 +1,45 @@
 name: Deploy Laravel to Aruba (Mixed SSH + FTP)
-
 on:
   push:
     branches:
       - main
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-
+        
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.2'
           extensions: mbstring, pdo, curl, xml, bcmath, intl, zip
-
+          
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '20'
           cache: 'npm'
-
+          
       - name: Install npm 10.9.0
         run: npm install -g npm@10.9.0
-
+        
       - name: Install NPM dependencies
         run: npm ci
-
+        
       - name: Build frontend assets
         run: npm run build
-
+        
       - name: Install Composer dependencies
         run: |
           composer install --no-dev --optimize-autoloader
-
+          
       - name: Set permissions for Laravel folders
         run: |
           chmod -R 775 storage
           chmod -R 775 bootstrap/cache
-
+          
       - name: Upload App Core via FTP (excluding build)
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
@@ -59,8 +56,9 @@ jobs:
             **/tests*/**
             **/public/build/**
             .env.example
+            .env
             README.md
-
+            
       - name: Upload build files via SSH (SCP)
         uses: appleboy/scp-action@v0.1.4
         with:
@@ -68,19 +66,31 @@ jobs:
           username: ${{ secrets.ARUBA_USER }}
           port: ${{ secrets.ARUBA_PORT }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "public/build"
-          target: "${{ secrets.REMOTE_PATH }}/public/build"
-
+          source: "public/build/*"
+          target: "${{ secrets.REMOTE_PATH }}/public/build/"
+          strip_components: 2
+          
       - name: Finalize via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.ARUBA_HOST }}
           username: ${{ secrets.ARUBA_USER }}
-          port: 2222
+          port: ${{ secrets.ARUBA_PORT }}  # <-- Cambiato da 2222 hardcoded
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd ${{ secrets.REMOTE_PATH }}
+            
+            # Installa dipendenze Composer sul server
             composer install --no-dev --optimize-autoloader
+            
+            # Imposta permessi corretti
+            chmod -R 775 storage bootstrap/cache
+            chmod -R 755 public/build
+            
+            # Cache Laravel
             php artisan config:cache
             php artisan route:cache
             php artisan view:cache
+            
+            # Opzionale: clear cache se necessario
+            # php artisan cache:clear
