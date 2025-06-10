@@ -10,7 +10,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
         
-        
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
@@ -60,26 +59,41 @@ jobs:
             .env
             README.md
             
+      - name: Test SSH Connection
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.ARUBA_HOST }}
+          username: ${{ secrets.ARUBA_USER }}
+          port: ${{ secrets.ARUBA_PORT }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            echo "SSH connection successful!"
+            pwd
+            whoami
+            
       - name: Upload build files via SSH (SCP)
         uses: appleboy/scp-action@v0.1.4
         with:
           host: ${{ secrets.ARUBA_HOST }}
           username: ${{ secrets.ARUBA_USER }}
           port: ${{ secrets.ARUBA_PORT }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          password: ${{ secrets.ARUBA_SSH_PASSWORD }}  # Invece di key
           source: "public/build/*"
-          target: "${{ secrets.REMOTE_PATH }}/public/build/"
-          strip_components: 2
+          target: "~/www.neoaveum.com/public/"
+          strip_components: 1
+          debug: true
+          timeout: 30s
+          command_timeout: 10m
           
       - name: Finalize via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.ARUBA_HOST }}
-          username: ${{ secrets.ARUBA_USER }}
-          port: ${{ secrets.ARUBA_PORT }}  # <-- Cambiato da 2222 hardcoded
+          host: ssh.i6r63sp.webhostingaruba.it
+          username: loihuse-deploy
+          port: 2222
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd ${{ secrets.REMOTE_PATH }}
+            cd /web/htdocs/www.neoaveum.com/home
             
             # Installa dipendenze Composer sul server
             composer install --no-dev --optimize-autoloader
