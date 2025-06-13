@@ -78,7 +78,7 @@ jobs:
           username: ${{ secrets.ARUBA_USER }}
           port: ${{ secrets.ARUBA_PORT }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}  
-          source: "public/build/*"
+          source: "public/build/"
           target: /web/htdocs/www.neoaveum.com/home/public/build/
           strip_components: 1
           debug: true
