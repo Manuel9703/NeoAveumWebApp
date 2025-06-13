@@ -79,7 +79,7 @@ jobs:
           port: ${{ secrets.ARUBA_PORT }}
           password: ${{ secrets.ARUBA_SSH_PASSWORD }}  # Invece di key
           source: "public/build/*"
-          target: "~/www.neoaveum.com/public/"
+          target: /web/htdocs/www.neoaveum.com/home/public/build/
           strip_components: 1
           debug: true
           timeout: 30s
