@@ -1,45 +1,67 @@
 name: Deploy Laravel to Aruba (Mixed SSH + FTP)
+
 on:
   push:
     branches:
       - main
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-        
+
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.2'
           extensions: mbstring, pdo, curl, xml, bcmath, intl, zip
-          
+
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '20'
           cache: 'npm'
-          
+
       - name: Install npm 10.9.0
         run: npm install -g npm@10.9.0
-        
+
       - name: Install NPM dependencies
         run: npm ci
-        
+
       - name: Build frontend assets
         run: npm run build
-        
+
       - name: Install Composer dependencies
-        run: |
-          composer install --no-dev --optimize-autoloader
-          
+        run: composer install --no-dev --optimize-autoloader
+
       - name: Set permissions for Laravel folders
         run: |
           chmod -R 775 storage
           chmod -R 775 bootstrap/cache
-          
+
+      - name: Prepare public files for root deployment
+        run: |
+          mkdir deploy-root
+          cp -r public/* deploy-root/
+          cp public/index.php deploy-root/
+          sed -i 's|__DIR__.\'/../vendor|__DIR__.'/vendor|g' deploy-root/index.php
+          sed -i 's|__DIR__.\'/../bootstrap|__DIR__.'/bootstrap|g' deploy-root/index.php
+
+          # Aggiungi .htaccess sicuro
+          cat <<EOF > deploy-root/.htaccess
+          <IfModule mod_rewrite.c>
+          RewriteEngine On
+          RedirectMatch 403 ^/(vendor|storage|bootstrap|routes|config|database)/
+          <FilesMatch "\.(env|gitignore|gitattributes|lock|json|md|xml|yml|log)$">
+          Order allow,deny
+          Deny from all
+          </FilesMatch>
+          </IfModule>
+          EOF
+
       - name: Upload App Core via FTP (excluding build)
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
@@ -54,11 +76,23 @@ jobs:
             **/node_modules/**
             **/vendor/**
             **/tests*/**
-            **/public/build/**
+            **/public/**
             .env.example
             .env
             README.md
-            
+
+      - name: Upload public content to root
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ftp
+          local-dir: ./deploy-root/
+          server-dir: ${{ secrets.FTP_REMOTE_PATH }}
+          exclude: |
+            **/.git*/**
+
       - name: Test SSH Connection
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -70,42 +104,35 @@ jobs:
             echo "SSH connection successful!"
             pwd
             whoami
-            
+
       - name: Upload build files via SSH (SCP)
         uses: appleboy/scp-action@v0.1.4
         with:
           host: ${{ secrets.ARUBA_HOST }}
           username: ${{ secrets.ARUBA_USER }}
           port: ${{ secrets.ARUBA_PORT }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}  
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
           source: "public/build/"
-          target: /web/htdocs/www.neoaveum.com/home/public/build/
+          target: /web/htdocs/www.neoaveum.com/home/build/
           strip_components: 1
           debug: true
           timeout: 30s
           command_timeout: 10m
-          
+
       - name: Finalize via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ssh.i6r63sp.webhostingaruba.it
-          username: loihuse-deploy
-          port: 2222
+          host: ${{ secrets.ARUBA_HOST }}
+          username: ${{ secrets.ARUBA_USER }}
+          port: ${{ secrets.ARUBA_PORT }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd /web/htdocs/www.neoaveum.com/home
-            
-            # Installa dipendenze Composer sul server
             composer install --no-dev --optimize-autoloader
-            
-            # Imposta permessi corretti
+
             chmod -R 775 storage bootstrap/cache
-            chmod -R 755 public/build
-            
-            # Cache Laravel
+            chmod -R 755 build
+
             php artisan config:cache
             php artisan route:cache
             php artisan view:cache
-            
-            # Opzionale: clear cache se necessario
-            # php artisan cache:clear
