@@ -91,16 +91,16 @@ jobs:
       - name: Upload build files via SSH (SCP)
         uses: appleboy/scp-action@v0.1.4
         with:
-          host: ${{ secrets.ARUBA_HOST }}
-          username: ${{ secrets.ARUBA_USER }}
-          port: ${{ secrets.ARUBA_PORT }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "public/build/"
-          target: /web/htdocs/www.neoaveum.com/home/build/
-          strip_components: 1
-          debug: true
-          timeout: 30s
-          command_timeout: 10m
+         host: ${{ secrets.ARUBA_HOST }}
+         username: ${{ secrets.ARUBA_USER }}
+         port: ${{ secrets.ARUBA_PORT }}
+         key: ${{ secrets.SSH_PRIVATE_KEY }}
+         source: "public/build/"
+         target: /web/htdocs/www.neoaveum.com/home/public/build/
+         strip_components: 1
+         debug: true 
+         timeout: 30s
+         command_timeout: 10m
 
       - name: Finalize via SSH
         uses: appleboy/ssh-action@v1.0.3
