@@ -42,27 +42,31 @@ jobs:
           chmod -R 775 storage
           chmod -R 775 bootstrap/cache
 
-      - name: Prepare public files for root deployment
+      - name: Prepare index.php and .htaccess for root
         run: |
-          mkdir deploy-root
-          cp -r public/* deploy-root/
-          cp public/index.php deploy-root/
-          sed -i 's|__DIR__.\'/../vendor|__DIR__.'/vendor|g' deploy-root/index.php
-          sed -i 's|__DIR__.\'/../bootstrap|__DIR__.'/bootstrap|g' deploy-root/index.php
+          cp public/index.php index.php
 
-          # Aggiungi .htaccess sicuro
-          cat <<EOF > deploy-root/.htaccess
+          # Modifica i percorsi relativi per Laravel
+          sed -i 's|__DIR__.\'/../vendor|__DIR__.'/vendor|g' index.php
+          sed -i 's|__DIR__.\'/../bootstrap|__DIR__.'/bootstrap|g' index.php
+
+          # Crea file .htaccess sicuro nella root
+          cat << 'EOF' > .htaccess
           <IfModule mod_rewrite.c>
-          RewriteEngine On
-          RedirectMatch 403 ^/(vendor|storage|bootstrap|routes|config|database)/
-          <FilesMatch "\.(env|gitignore|gitattributes|lock|json|md|xml|yml|log)$">
-          Order allow,deny
-          Deny from all
-          </FilesMatch>
-          </IfModule>
-          EOF
+            RewriteEngine On
 
-      - name: Upload App Core via FTP (excluding build)
+            # Blocca accesso a cartelle sensibili
+            RedirectMatch 403 ^/(vendor|storage|bootstrap|routes|config|database)/
+
+            # Blocca accesso a file riservati
+            <FilesMatch "\.(env|gitignore|gitattributes|lock|json|md|xml|yml|log)$">
+              Order allow,deny
+              Deny from all
+            </FilesMatch>
+          </IfModule>
+           EOF
+
+      - name: Upload App Core via FTP (excluding public)
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
           server: ${{ secrets.FTP_SERVER }}
@@ -78,20 +82,7 @@ jobs:
             **/tests*/**
             **/public/**
             .env.example
-            .env
             README.md
-
-      - name: Upload public content to root
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
-        with:
-          server: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          protocol: ftp
-          local-dir: ./deploy-root/
-          server-dir: ${{ secrets.FTP_REMOTE_PATH }}
-          exclude: |
-            **/.git*/**
 
       - name: Test SSH Connection
         uses: appleboy/ssh-action@v1.0.3
@@ -128,6 +119,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd /web/htdocs/www.neoaveum.com/home
+
             composer install --no-dev --optimize-autoloader
 
             chmod -R 775 storage bootstrap/cache
