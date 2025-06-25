@@ -49,14 +49,17 @@ jobs:
           sed -i "s|__DIR__.'/../bootstrap|__DIR__.'/bootstrap|g" index.php
           cat << 'EOF' > .htaccess
           <IfModule mod_rewrite.c>
-          RewriteEngine On
-          RedirectMatch 403 ^/(vendor|storage|bootstrap|routes|config|database)/
-          <FilesMatch "\.(env|gitignore|gitattributes|lock|json|md|xml|yml|log)$">
-          Order allow,deny
-          Deny from all
-          </FilesMatch>
+              RewriteEngine On
+              RedirectMatch 403 ^/(vendor|storage|bootstrap|routes|config|database)/
+              <FilesMatch "\.(env|gitignore|gitattributes|lock|json|md|xml|yml|log)$">
+                  Order allow,deny
+                  Deny from all
+              </FilesMatch>
+              RewriteCond %{REQUEST_FILENAME} !-f
+              RewriteCond %{REQUEST_FILENAME} !-d
+              RewriteRule ^ index.php [L]
           </IfModule>
-          EOF
+                    EOF
 
       - name: Upload App Core via FTP (excluding public)
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
