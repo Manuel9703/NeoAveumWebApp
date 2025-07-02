@@ -37,20 +37,23 @@ jobs:
       - name: Install Composer dependencies
         run: composer install --no-dev --optimize-autoloader
 
-      - name: Build SSR assets
-        run: npm run build:ssr 
-
       - name: Set permissions for Laravel folders
         run: |
           chmod -R 775 storage
           chmod -R 775 bootstrap/cache
 
-      - name: Prepare index.php and .htaccess for root
+      - name: Prepare index.php and .htaccess for Aruba public_html
         run: |
-          cp public/index.php index.php
-          sed -i "s|__DIR__.'/../vendor|__DIR__.'/vendor|g" index.php
-          sed -i "s|__DIR__.'/../bootstrap|__DIR__.'/bootstrap|g" index.php
-          cat << 'EOF' > .htaccess
+          mkdir -p public_html
+          cp public/index.php public_html/index.php
+          cp public/.htaccess public_html/.htaccess
+
+          # modifica i path relativi di index.php per puntare alla root corretta
+          sed -i "s|__DIR__.'/../vendor|__DIR__.'/../vendor|g" public_html/index.php
+          sed -i "s|__DIR__.'/../bootstrap|__DIR__.'/../bootstrap|g" public_html/index.php
+
+          # harden .htaccess
+          cat << 'EOF' > public_html/.htaccess
           <IfModule mod_rewrite.c>
               RewriteEngine On
               RedirectMatch 403 ^/(vendor|storage|bootstrap|routes|config|database)/
@@ -62,9 +65,9 @@ jobs:
               RewriteCond %{REQUEST_FILENAME} !-d
               RewriteRule ^ index.php [L]
           </IfModule>
-                    EOF
+          EOF
 
-      - name: Upload App Core via FTP (excluding public)
+      - name: Upload App Core via FTP (excluding public_html)
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
           server: ${{ secrets.FTP_SERVER }}
@@ -76,11 +79,21 @@ jobs:
           exclude: |
             **/.git*/**
             **/node_modules/**
-            **/vendor/**
             **/tests*/**
-            **/public/**
+            public/**
+            public_html/**
             .env.example
             README.md
+
+      - name: Upload public_html files via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ftp
+          local-dir: ./public_html/
+          server-dir: ${{ secrets.FTP_REMOTE_PATH }}/public_html
 
       - name: Test SSH Connection
         uses: appleboy/ssh-action@v1.0.3
@@ -94,19 +107,19 @@ jobs:
             pwd
             whoami
 
-      - name: Upload build files via SSH (SCP)
+      - name: Upload build assets to public_html/build via SSH
         uses: appleboy/scp-action@v0.1.4
         with:
-         host: ${{ secrets.ARUBA_HOST }}
-         username: ${{ secrets.ARUBA_USER }}
-         port: ${{ secrets.ARUBA_PORT }}
-         key: ${{ secrets.SSH_PRIVATE_KEY }}
-         source: "public/build/"
-         target: /web/htdocs/www.neoaveum.com/home/public/
-         strip_components: 1
-         debug: true 
-         timeout: 30s
-         command_timeout: 10m
+          host: ${{ secrets.ARUBA_HOST }}
+          username: ${{ secrets.ARUBA_USER }}
+          port: ${{ secrets.ARUBA_PORT }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "public/build/"
+          target: /web/htdocs/www.neoaveum.com/home/public_html/build/
+          strip_components: 1
+          debug: true 
+          timeout: 30s
+          command_timeout: 10m
 
       - name: Finalize via SSH
         uses: appleboy/ssh-action@v1.0.3
@@ -121,7 +134,7 @@ jobs:
             composer install --no-dev --optimize-autoloader
 
             chmod -R 775 storage bootstrap/cache
-            chmod -R 755 build
+            chmod -R 755 public_html/build
 
             php artisan config:cache
             php artisan route:cache
