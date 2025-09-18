@@ -325,6 +325,50 @@ jobs:
             HTEOF
             echo "✅ Alternative .htaccess created. If problems persist, rename .htaccess.simple to .htaccess"
 
+      - name: Fix Document Root Issue
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.ARUBA_HOST }}
+          username: ${{ secrets.ARUBA_USER }}
+          port: ${{ secrets.ARUBA_PORT }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            echo "=== FIXING DOCUMENT ROOT ISSUE ==="
+            cd /web/htdocs/www.neoaveum.com
+
+            # Backup existing files if any
+            if [ -f index.php ]; then
+              echo "Backing up existing files..."
+              mkdir -p backup_$(date +%Y%m%d_%H%M%S)
+              mv *.php backup_$(date +%Y%m%d_%H%M%S)/ 2>/dev/null || true
+              mv *.html backup_$(date +%Y%m%d_%H%M%S)/ 2>/dev/null || true
+              mv .htaccess backup_$(date +%Y%m%d_%H%M%S)/ 2>/dev/null || true
+            fi
+
+            # Copy all files from home/public_html to document root
+            echo "Copying files to document root..."
+            cp -r home/public_html/* ./
+
+            # Fix the paths in index.php for new location
+            echo "Fixing Laravel paths..."
+            if [ -f index.php ]; then
+              # Update paths to point to home directory
+              sed -i "s|__DIR__\.'/../vendor|__DIR__.'/home/vendor|g" index.php
+              sed -i "s|__DIR__\.'/../bootstrap|__DIR__.'/home/bootstrap|g" index.php
+              sed -i "s|__DIR__\.'/../storage|__DIR__.'/home/storage|g" index.php
+
+              echo "Updated index.php paths"
+              echo "First 10 lines of updated index.php:"
+              head -10 index.php
+            fi
+
+            # Set correct permissions
+            chmod 644 index.php
+            chmod 644 .htaccess
+            chmod -R 755 build/ 2>/dev/null || true
+
+            echo "✅ Files copied to document root successfully"
+
       - name: Post-deploy operations via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
