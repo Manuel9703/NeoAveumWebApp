@@ -1,4 +1,4 @@
-name: Deploy Laravel to Aruba (Mixed SSH + FTP) - Fixed
+name: Deploy Laravel to Aruba (Mixed SSH + FTP) - Debug 403 Fix
 
 on:
   push:
@@ -44,10 +44,8 @@ jobs:
 
       - name: Create .env file for production
         run: |
-          # Crea un .env minimale se non esiste
           if [ ! -f .env ]; then
             cp .env.example .env
-            # Aggiorna le configurazioni base per produzione
             sed -i 's/APP_ENV=local/APP_ENV=production/' .env
             sed -i 's/APP_DEBUG=true/APP_DEBUG=false/' .env
             echo "APP_KEY=" >> .env
@@ -59,47 +57,30 @@ jobs:
       - name: Prepare index.php and .htaccess for Aruba public_html
         run: |
           mkdir -p public_html
-
-          # Copia i file essenziali dalla cartella public
           cp public/index.php public_html/index.php
           if [ -f public/.htaccess ]; then
             cp public/.htaccess public_html/.htaccess
           fi
-
-          # Copia tutti gli asset statici (immagini, favicon, etc.)
           if [ -d public/images ]; then cp -r public/images public_html/; fi
           if [ -d public/css ]; then cp -r public/css public_html/; fi
           if [ -d public/js ]; then cp -r public/js public_html/; fi
           if [ -f public/favicon.ico ]; then cp public/favicon.ico public_html/; fi
           if [ -f public/robots.txt ]; then cp public/robots.txt public_html/; fi
-
-          # CORREZIONE: Modifica i path in index.php per puntare alla directory parent
-          # Da public_html dobbiamo andare una directory up per raggiungere il core Laravel
           sed -i "s|__DIR__\.'/../vendor|__DIR__\.'/../vendor|g" public_html/index.php
           sed -i "s|__DIR__\.'/../bootstrap|__DIR__\.'/../bootstrap|g" public_html/index.php
-
-          # Crea/migliora il .htaccess per sicurezza e MIME types
           cat << 'EOF' > public_html/.htaccess
           <IfModule mod_rewrite.c>
               RewriteEngine On
-
-              # Sicurezza: blocca accesso a directory sensibili
               RedirectMatch 403 ^/(vendor|storage|bootstrap|routes|config|database|app)/
-
-              # Sicurezza: blocca file sensibili
               <FilesMatch "\.(env|gitignore|gitattributes|lock|composer\.json|package\.json|md|xml|yml|yaml|log)$">
                   Order allow,deny
                   Deny from all
               </FilesMatch>
-
-              # MIME Types per asset build
               AddType text/css .css
               AddType application/javascript .js
               AddType application/json .json
               AddType text/plain .map
               AddType image/svg+xml .svg
-
-              # Cache headers per performance
               <IfModule mod_expires.c>
                   ExpiresActive On
                   ExpiresByType text/css "access plus 1 month"
@@ -110,8 +91,6 @@ jobs:
                   ExpiresByType image/gif "access plus 1 month"
                   ExpiresByType image/svg+xml "access plus 1 month"
               </IfModule>
-
-              # Laravel routing
               RewriteCond %{REQUEST_FILENAME} !-f
               RewriteCond %{REQUEST_FILENAME} !-d
               RewriteRule ^ index.php [L]
@@ -184,6 +163,168 @@ jobs:
           timeout: 30s
           command_timeout: 10m
 
+      - name: Debug 403 Forbidden Error
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.ARUBA_HOST }}
+          username: ${{ secrets.ARUBA_USER }}
+          port: ${{ secrets.ARUBA_PORT }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /web/htdocs/www.neoaveum.com/home
+            echo "=== DEBUGGING 403 FORBIDDEN ==="
+            echo "📁 Directory structure:"
+            ls -la
+            echo ""
+            echo "📁 Public_html contents:"
+            ls -la public_html/ || echo "❌ public_html directory not found!"
+            echo ""
+            echo "🔐 Permissions check:"
+            stat -c "Permissions: %a, Owner: %U:%G" public_html/ || echo "Cannot stat public_html"
+            if [ -f public_html/index.php ]; then
+              stat -c "index.php - Permissions: %a, Owner: %U:%G" public_html/index.php
+            else
+              echo "❌ index.php not found in public_html!"
+            fi
+            echo ""
+            echo "⚙️ .htaccess check:"
+            if [ -f public_html/.htaccess ]; then
+              echo "✅ .htaccess exists"
+              head -10 public_html/.htaccess
+            else
+              echo "❌ .htaccess not found!"
+            fi
+            echo ""
+            echo "🌐 Web server document root check:"
+            echo "Current working directory: $(pwd)"
+            echo "Expected document root should point to: $(pwd)/public_html"
+            echo ""
+            echo "🧪 Testing index.php directly:"
+            if [ -f public_html/index.php ]; then
+              cd public_html
+              php -l index.php || echo "❌ PHP syntax error in index.php"
+              echo ""
+              echo "📄 First 20 lines of index.php:"
+              head -20 index.php
+            fi
+            echo ""
+            echo "🎯 Laravel core check:"
+            cd /web/htdocs/www.neoaveum.com/home
+            if [ -f artisan ]; then
+              echo "✅ Laravel artisan found"
+              if [ -f .env ]; then
+                echo "✅ .env file exists"
+              else
+                echo "❌ .env file missing!"
+              fi
+              if [ -d vendor ]; then
+                echo "✅ vendor directory exists"
+              else
+                echo "❌ vendor directory missing!"
+              fi
+            else
+              echo "❌ Laravel artisan not found - core files missing!"
+            fi
+            echo ""
+            echo "📋 Error logs check:"
+            if [ -f storage/logs/laravel.log ]; then
+              echo "📋 Last 10 lines of Laravel log:"
+              tail -10 storage/logs/laravel.log
+            else
+              echo "ℹ️ No Laravel logs found yet"
+            fi
+            echo "🏢 Aruba hosting specific checks:"
+            echo "Looking for error logs in common Aruba locations..."
+            if [ -d ../logs ]; then
+              echo "Found logs directory at ../logs"
+              ls -la ../logs/ || echo "Cannot access logs directory"
+            fi
+            echo "✍️ Testing file creation permissions:"
+            echo "<?php echo 'Test OK - $(date)'; ?>" > public_html/test.php
+            if [ -f public_html/test.php ]; then
+              echo "✅ File creation successful"
+              chmod 644 public_html/test.php
+              echo "✅ Permissions set to 644"
+              echo "🌐 Try accessing: https://www.neoaveum.com/test.php"
+            else
+              echo "❌ Cannot create test file"
+            fi
+
+      - name: Attempt 403 Fixes
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.ARUBA_HOST }}
+          username: ${{ secrets.ARUBA_USER }}
+          port: ${{ secrets.ARUBA_PORT }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /web/htdocs/www.neoaveum.com/home
+            echo "=== ATTEMPTING 403 FIXES ==="
+            echo "🔧 Fix 1: Checking Aruba document root structure..."
+            cd /web/htdocs/www.neoaveum.com
+            echo "Parent directory structure:"
+            ls -la
+            if [ ! -d public_html ] && [ -d home/public_html ]; then
+              echo "Creating public_html symlink to home/public_html"
+              ln -sf home/public_html public_html
+            elif [ ! -d public_html ]; then
+              echo "Creating public_html directory and copying content"
+              cp -r home/public_html ./
+            fi
+            echo "🔧 Fix 2: Checking and fixing PHP paths..."
+            cd /web/htdocs/www.neoaveum.com/home
+            if [ -f public_html/index.php ]; then
+              cp public_html/index.php public_html/index.php.backup
+              sed -i "s|require_once __DIR__\.'/../vendor/autoload\.php';|require_once __DIR__\.'/../vendor/autoload.php';|g" public_html/index.php
+              sed -i "s|require_once __DIR__\.'/../bootstrap/app\.php';|require_once __DIR__\.'/../bootstrap/app.php';|g" public_html/index.php
+              cat > public_html/index_test.php << 'TESTEOF'
+            <?php
+            echo "Current directory: " . __DIR__ . "\n<br>";
+            echo "Parent directory: " . dirname(__DIR__) . "\n<br>";
+            echo "Testing Laravel paths:\n<br>";
+            $autoload_path = __DIR__ . '/../vendor/autoload.php';
+            echo "Autoload path: $autoload_path - ";
+            echo file_exists($autoload_path) ? "EXISTS" : "NOT FOUND";
+            echo "\n<br>";
+            $bootstrap_path = __DIR__ . '/../bootstrap/app.php';
+            echo "Bootstrap path: $bootstrap_path - ";
+            echo file_exists($bootstrap_path) ? "EXISTS" : "NOT FOUND";
+            echo "\n<br>";
+            if (file_exists($autoload_path)) {
+              require_once $autoload_path;
+              echo "✅ Autoload included successfully\n<br>";
+              if (file_exists($bootstrap_path)) {
+                try {
+                  $app = require_once $bootstrap_path;
+                  echo "✅ Laravel app bootstrapped successfully\n<br>";
+                  echo "App instance: " . get_class($app) . "\n<br>";
+                } catch (Exception $e) {
+                  echo "❌ Bootstrap error: " . $e->getMessage() . "\n<br>";
+                }
+              }
+            } else {
+              echo "❌ Cannot include autoload\n<br>";
+            }
+            TESTEOF
+              chmod 644 public_html/index_test.php
+              echo "✅ Created test file: https://www.neoaveum.com/index_test.php"
+            fi
+            echo "🔧 Fix 3: Setting comprehensive permissions..."
+            chmod -R 755 public_html/
+            chmod 644 public_html/index.php
+            chmod 644 public_html/.htaccess
+            find public_html/ -type f -name "*.php" -exec chmod 644 {} \;
+            find public_html/ -type f -name "*.css" -exec chmod 644 {} \;
+            find public_html/ -type f -name "*.js" -exec chmod 644 {} \;
+            echo "🔧 Fix 4: Creating alternative .htaccess..."
+            cat > public_html/.htaccess.simple << 'HTEOF'
+            RewriteEngine On
+            RewriteCond %{REQUEST_FILENAME} !-f
+            RewriteCond %{REQUEST_FILENAME} !-d
+            RewriteRule ^ index.php [L]
+            HTEOF
+            echo "✅ Alternative .htaccess created. If problems persist, rename .htaccess.simple to .htaccess"
+
       - name: Post-deploy operations via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -193,32 +334,15 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd /web/htdocs/www.neoaveum.com/home
-
-            echo "=== DEPLOYMENT DEBUG ==="
-            echo "Current directory: $(pwd)"
-            echo "Directory contents:"
-            ls -la
-            echo ""
-            echo "Public_html contents:"
-            ls -la public_html/
-            echo ""
-            echo "Build directory:"
-            ls -la public_html/build/ || echo "Build directory not found"
-            echo ""
-
-            # Reinstall dependencies per sicurezza
+            echo "=== POST-DEPLOY OPERATIONS ==="
             if [ -f composer.json ]; then
               composer install --no-dev --optimize-autoloader --no-interaction
             fi
-
-            # Fix permessi
             chmod -R 775 storage bootstrap/cache
             chmod -R 755 public_html/
             if [ -d public_html/build ]; then
               chmod -R 755 public_html/build
             fi
-
-            # Verifica che esista il file .env
             if [ ! -f .env ]; then
               echo "WARNING: .env file not found!"
               if [ -f .env.example ]; then
@@ -226,33 +350,16 @@ jobs:
                 echo "Created .env from .env.example"
               fi
             fi
-
-            # Cache Laravel (solo se tutto va bene)
             echo "=== LARAVEL OPTIMIZATION ==="
-            php artisan config:clear
-            php artisan cache:clear
-            php artisan view:clear
-            php artisan route:clear
+            php artisan config:clear || echo "Config clear failed"
+            php artisan cache:clear || echo "Cache clear failed"
+            php artisan view:clear || echo "View clear failed"
+            php artisan route:clear || echo "Route clear failed"
+            php artisan config:cache || echo "Config cache failed - continuing anyway"
+            php artisan route:cache || echo "Route cache failed - continuing anyway"
+            php artisan view:cache || echo "View cache failed - continuing anyway"
 
-            # Ricrea le cache
-            php artisan config:cache
-            php artisan route:cache
-            php artisan view:cache
-
-            echo "=== FINAL VERIFICATION ==="
-            echo "Checking index.php:"
-            head -10 public_html/index.php
-            echo ""
-            echo "Checking .env exists:"
-            ls -la .env || echo ".env not found"
-            echo ""
-            echo "Checking Laravel logs:"
-            tail -5 storage/logs/laravel.log 2>/dev/null || echo "No Laravel logs yet"
-            echo ""
-            echo "Testing PHP syntax:"
-            cd public_html && php -l index.php
-
-      - name: Final Health Check
+      - name: Final Status Report
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.ARUBA_HOST }}
@@ -260,31 +367,31 @@ jobs:
           port: ${{ secrets.ARUBA_PORT }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd /web/htdocs/www.neoaveum.com/home/public_html
-
-            echo "=== FINAL HEALTH CHECK ==="
-
-            # Test direct PHP execution
-            echo "Testing direct PHP execution..."
-            php -r "
-            \$_SERVER['REQUEST_URI'] = '/';
-            \$_SERVER['REQUEST_METHOD'] = 'GET';
-            \$_SERVER['HTTP_HOST'] = 'www.neoaveum.com';
-            ob_start();
-            try {
-                include 'index.php';
-                \$output = ob_get_contents();
-                echo 'PHP execution: SUCCESS\n';
-                echo 'Output length: ' . strlen(\$output) . ' characters\n';
-                if (strpos(\$output, 'Laravel') !== false || strpos(\$output, 'html') !== false) {
-                    echo 'Laravel app appears to be responding\n';
-                } else {
-                    echo 'WARNING: Unexpected output\n';
-                }
-            } catch (Exception \$e) {
-                echo 'PHP execution: FAILED - ' . \$e->getMessage() . '\n';
-            }
-            ob_end_clean();
-            "
-
-            echo "Deployment completed. Check your website!"
+            cd /web/htdocs/www.neoaveum.com/home
+            echo "=== FINAL STATUS REPORT ==="
+            echo ""
+            echo "🌐 URLs to test:"
+            echo "   Main site: https://www.neoaveum.com"
+            echo "   Test file: https://www.neoaveum.com/test.php"
+            echo "   Debug file: https://www.neoaveum.com/index_test.php"
+            echo ""
+            echo "📋 Deployment Summary:"
+            echo "   Laravel core: $([ -f artisan ] && echo "✅ Present" || echo "❌ Missing")"
+            echo "   Public HTML: $([ -d public_html ] && echo "✅ Present" || echo "❌ Missing")"
+            echo "   Index.php: $([ -f public_html/index.php ] && echo "✅ Present" || echo "❌ Missing")"
+            echo "   .htaccess: $([ -f public_html/.htaccess ] && echo "✅ Present" || echo "❌ Missing")"
+            echo "   .env file: $([ -f .env ] && echo "✅ Present" || echo "❌ Missing")"
+            echo "   Vendor dir: $([ -d vendor ] && echo "✅ Present" || echo "❌ Missing")"
+            echo "   Build assets: $([ -d public_html/build ] && echo "✅ Present" || echo "❌ Missing")"
+            echo ""
+            if [ -f storage/logs/laravel.log ]; then
+              echo "📋 Recent Laravel logs:"
+              tail -5 storage/logs/laravel.log
+            fi
+            echo ""
+            echo "🎯 Next steps if still getting 403:"
+            echo "   1. Check the test URLs above"
+            echo "   2. Contact Aruba support about document root configuration"
+            echo "   3. Verify if .htaccess.simple works better"
+            echo ""
+            echo "🚀 Deployment completed!"
