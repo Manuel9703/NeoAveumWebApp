@@ -1,4 +1,4 @@
-name: Deploy Laravel to Aruba (Mixed SSH + FTP)
+name: Deploy Laravel to Aruba (Mixed SSH + FTP) - Fixed
 
 on:
   push:
@@ -42,32 +42,92 @@ jobs:
           chmod -R 775 storage
           chmod -R 775 bootstrap/cache
 
+      - name: Create .env file for production
+        run: |
+          # Crea un .env minimale se non esiste
+          if [ ! -f .env ]; then
+            cp .env.example .env
+            # Aggiorna le configurazioni base per produzione
+            sed -i 's/APP_ENV=local/APP_ENV=production/' .env
+            sed -i 's/APP_DEBUG=true/APP_DEBUG=false/' .env
+            echo "APP_KEY=" >> .env
+          fi
+
+      - name: Generate application key
+        run: php artisan key:generate --no-interaction
+
       - name: Prepare index.php and .htaccess for Aruba public_html
         run: |
           mkdir -p public_html
+
+          # Copia i file essenziali dalla cartella public
           cp public/index.php public_html/index.php
-          cp public/.htaccess public_html/.htaccess
+          if [ -f public/.htaccess ]; then
+            cp public/.htaccess public_html/.htaccess
+          fi
 
-          # modifica i path relativi di index.php per puntare alla root corretta
-          sed -i "s|__DIR__.'/../vendor|__DIR__.'/../vendor|g" public_html/index.php
-          sed -i "s|__DIR__.'/../bootstrap|__DIR__.'/../bootstrap|g" public_html/index.php
+          # Copia tutti gli asset statici (immagini, favicon, etc.)
+          if [ -d public/images ]; then cp -r public/images public_html/; fi
+          if [ -d public/css ]; then cp -r public/css public_html/; fi
+          if [ -d public/js ]; then cp -r public/js public_html/; fi
+          if [ -f public/favicon.ico ]; then cp public/favicon.ico public_html/; fi
+          if [ -f public/robots.txt ]; then cp public/robots.txt public_html/; fi
 
-          # harden .htaccess
+          # CORREZIONE: Modifica i path in index.php per puntare alla directory parent
+          # Da public_html dobbiamo andare una directory up per raggiungere il core Laravel
+          sed -i "s|__DIR__\.'/../vendor|__DIR__\.'/../vendor|g" public_html/index.php
+          sed -i "s|__DIR__\.'/../bootstrap|__DIR__\.'/../bootstrap|g" public_html/index.php
+
+          # Crea/migliora il .htaccess per sicurezza e MIME types
           cat << 'EOF' > public_html/.htaccess
           <IfModule mod_rewrite.c>
               RewriteEngine On
-              RedirectMatch 403 ^/(vendor|storage|bootstrap|routes|config|database)/
-              <FilesMatch "\.(env|gitignore|gitattributes|lock|json|md|xml|yml|log)$">
+
+              # Sicurezza: blocca accesso a directory sensibili
+              RedirectMatch 403 ^/(vendor|storage|bootstrap|routes|config|database|app)/
+
+              # Sicurezza: blocca file sensibili
+              <FilesMatch "\.(env|gitignore|gitattributes|lock|composer\.json|package\.json|md|xml|yml|yaml|log)$">
                   Order allow,deny
                   Deny from all
               </FilesMatch>
+
+              # MIME Types per asset build
+              AddType text/css .css
+              AddType application/javascript .js
+              AddType application/json .json
+              AddType text/plain .map
+              AddType image/svg+xml .svg
+
+              # Cache headers per performance
+              <IfModule mod_expires.c>
+                  ExpiresActive On
+                  ExpiresByType text/css "access plus 1 month"
+                  ExpiresByType application/javascript "access plus 1 month"
+                  ExpiresByType image/png "access plus 1 month"
+                  ExpiresByType image/jpg "access plus 1 month"
+                  ExpiresByType image/jpeg "access plus 1 month"
+                  ExpiresByType image/gif "access plus 1 month"
+                  ExpiresByType image/svg+xml "access plus 1 month"
+              </IfModule>
+
+              # Laravel routing
               RewriteCond %{REQUEST_FILENAME} !-f
               RewriteCond %{REQUEST_FILENAME} !-d
               RewriteRule ^ index.php [L]
           </IfModule>
           EOF
 
-      - name: Upload App Core via FTP (excluding public_html)
+      - name: Debug - Show file structure before upload
+        run: |
+          echo "=== STRUCTURE BEFORE UPLOAD ==="
+          ls -la
+          echo "=== PUBLIC_HTML CONTENT ==="
+          ls -la public_html/
+          echo "=== INDEX.PHP FIRST 15 LINES ==="
+          head -15 public_html/index.php
+
+      - name: Upload App Core via FTP (excluding public files)
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
           server: ${{ secrets.FTP_SERVER }}
@@ -84,6 +144,9 @@ jobs:
             public_html/**
             .env.example
             README.md
+            package*.json
+            vite.config.js
+            tailwind.config.js
 
       - name: Upload public_html files via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
@@ -93,7 +156,7 @@ jobs:
           password: ${{ secrets.FTP_PASSWORD }}
           protocol: ftp
           local-dir: ./public_html/
-          server-dir: ${{ secrets.FTP_REMOTE_PATH }}/public_html
+          server-dir: ${{ secrets.FTP_REMOTE_PATH }}/public_html/
 
       - name: Test SSH Connection
         uses: appleboy/ssh-action@v1.0.3
@@ -104,24 +167,24 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             echo "SSH connection successful!"
-            pwd
-            whoami
+            echo "Current directory: $(pwd)"
+            echo "User: $(whoami)"
 
-      - name: Upload build assets to public_html/build via SSH
+      - name: Upload Vite build assets via SSH
         uses: appleboy/scp-action@v0.1.4
         with:
           host: ${{ secrets.ARUBA_HOST }}
           username: ${{ secrets.ARUBA_USER }}
           port: ${{ secrets.ARUBA_PORT }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "public/build/"
-          target: /web/htdocs/www.neoaveum.com/home/public_html/build/
+          source: "public/build"
+          target: "/web/htdocs/www.neoaveum.com/home/public_html/"
           strip_components: 1
-          debug: true 
+          debug: true
           timeout: 30s
           command_timeout: 10m
 
-      - name: Finalize via SSH
+      - name: Post-deploy operations via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.ARUBA_HOST }}
@@ -131,11 +194,97 @@ jobs:
           script: |
             cd /web/htdocs/www.neoaveum.com/home
 
-            composer install --no-dev --optimize-autoloader
+            echo "=== DEPLOYMENT DEBUG ==="
+            echo "Current directory: $(pwd)"
+            echo "Directory contents:"
+            ls -la
+            echo ""
+            echo "Public_html contents:"
+            ls -la public_html/
+            echo ""
+            echo "Build directory:"
+            ls -la public_html/build/ || echo "Build directory not found"
+            echo ""
 
+            # Reinstall dependencies per sicurezza
+            if [ -f composer.json ]; then
+              composer install --no-dev --optimize-autoloader --no-interaction
+            fi
+
+            # Fix permessi
             chmod -R 775 storage bootstrap/cache
-            chmod -R 755 public_html/build
+            chmod -R 755 public_html/
+            if [ -d public_html/build ]; then
+              chmod -R 755 public_html/build
+            fi
 
+            # Verifica che esista il file .env
+            if [ ! -f .env ]; then
+              echo "WARNING: .env file not found!"
+              if [ -f .env.example ]; then
+                cp .env.example .env
+                echo "Created .env from .env.example"
+              fi
+            fi
+
+            # Cache Laravel (solo se tutto va bene)
+            echo "=== LARAVEL OPTIMIZATION ==="
+            php artisan config:clear
+            php artisan cache:clear
+            php artisan view:clear
+            php artisan route:clear
+
+            # Ricrea le cache
             php artisan config:cache
             php artisan route:cache
             php artisan view:cache
+
+            echo "=== FINAL VERIFICATION ==="
+            echo "Checking index.php:"
+            head -10 public_html/index.php
+            echo ""
+            echo "Checking .env exists:"
+            ls -la .env || echo ".env not found"
+            echo ""
+            echo "Checking Laravel logs:"
+            tail -5 storage/logs/laravel.log 2>/dev/null || echo "No Laravel logs yet"
+            echo ""
+            echo "Testing PHP syntax:"
+            cd public_html && php -l index.php
+
+      - name: Final Health Check
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.ARUBA_HOST }}
+          username: ${{ secrets.ARUBA_USER }}
+          port: ${{ secrets.ARUBA_PORT }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /web/htdocs/www.neoaveum.com/home/public_html
+
+            echo "=== FINAL HEALTH CHECK ==="
+
+            # Test direct PHP execution
+            echo "Testing direct PHP execution..."
+            php -r "
+            \$_SERVER['REQUEST_URI'] = '/';
+            \$_SERVER['REQUEST_METHOD'] = 'GET';
+            \$_SERVER['HTTP_HOST'] = 'www.neoaveum.com';
+            ob_start();
+            try {
+                include 'index.php';
+                \$output = ob_get_contents();
+                echo 'PHP execution: SUCCESS\n';
+                echo 'Output length: ' . strlen(\$output) . ' characters\n';
+                if (strpos(\$output, 'Laravel') !== false || strpos(\$output, 'html') !== false) {
+                    echo 'Laravel app appears to be responding\n';
+                } else {
+                    echo 'WARNING: Unexpected output\n';
+                }
+            } catch (Exception \$e) {
+                echo 'PHP execution: FAILED - ' . \$e->getMessage() . '\n';
+            }
+            ob_end_clean();
+            "
+
+            echo "Deployment completed. Check your website!"
